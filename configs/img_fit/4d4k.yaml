@@ -1,0 +1,76 @@
+task: nerf
+gpus: [0]
+exp_name: 'img_fit'
+scene: 'lego'
+
+train_dataset_module: lib.datasets.img_fit.4k4d_dataset
+test_dataset_module: lib.datasets.img_fit.4k4d_dataset
+network_module: lib.networks.img_fit.4k4d_net
+loss_module: lib.train.losses.img_fit
+evaluator_module: lib.evaluators.img_fit
+visualizer_module: lib.visualizers.img_fit
+
+task_arg:
+    N_pixels: 8192
+    chunk_size: 16384
+
+network:
+    use_sigmoid: True
+    Fourplane_Encoder:
+        aggregation: 'concat'
+        level_dim: 2
+    Geometry_Encoder:
+        D: 2
+        W: 128
+        input_ch: 192
+        output_ch: 2
+    IBRnet:
+        Feature_map_encoder:
+            coarse_only: True
+        Weights_encoder:
+            D: 1
+            W: 64
+            input_ch: 227
+            output_ch: 1
+        SH_consistent_encoder:
+            D: 2
+            W: 128
+            input_ch: 192
+            degree : 3
+
+
+
+
+train_dataset:
+    data_root: 'data/my_387'
+    split: 'train'
+    view: 0
+    input_ratio: 1.
+    iteration: 1
+    voxel_num_start: 100
+    nearset_num: 8
+
+test_dataset:
+    data_root: 'data/my_387'
+    view: 0
+    split: 'test'
+    input_ratio: 0.5
+
+train:
+    batch_size: 1
+    lr: 5e-4
+    weight_decay: 0.
+    epoch: 20 # 100 * 500
+    scheduler:
+        type: 'exponential'
+        gamma: 0.1
+        decay_epochs: 20
+    num_workers: 1
+
+test:
+    batch_size: 1
+
+ep_iter: 500
+eval_ep: 10       # 50 iterations
+save_latest_ep: 20 # 10000 iterations
+log_interval: 100

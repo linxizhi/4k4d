@@ -24,7 +24,7 @@ def run_network():
     load_network(network, cfg.trained_model_dir, epoch=cfg.test.epoch)
     network.eval()
 
-    data_loader = make_data_loader(cfg, is_train=False)
+    data_loader = make_data_loader(cfg, is_train=True)
     total_time = 0
     for batch in tqdm.tqdm(data_loader):
         batch = to_cuda(batch)
