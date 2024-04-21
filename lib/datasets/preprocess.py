@@ -108,12 +108,12 @@ def read_ply(file_path):
 def process_voxels(cfg, camera_all=None,all_masks=None,pcd_index=0,use_octree=False):
 
     assert camera_all is not None,"Bounding box is not set"
-    bounding_box=camera_all[0].bounds
     pcd_path = os.path.join(cfg.train_dataset['data_root'], "pcd")
     if not os.path.exists(pcd_path):
         os.makedirs(pcd_path)
     pcd_path = os.path.join(pcd_path, f"{pcd_index}.ply")
     if not os.path.exists(pcd_path):
+        bounding_box=camera_all[0].bounds
         iteration = cfg.train_dataset["iteration"]
         # cameras=cfg.cameras
         voxel_num = cfg.train_dataset['voxel_num_start']

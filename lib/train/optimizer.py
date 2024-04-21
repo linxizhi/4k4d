@@ -18,6 +18,10 @@ def make_optimizer(cfg, net):
     for key, value in net.named_parameters():
         if not value.requires_grad:
             continue
+        if key.startswith('all_timestep_pcds'):
+            lr=1e-5
+        else:
+            lr=cfg.train.lr
         params += [{"params": [value], "lr": lr, "weight_decay": weight_decay, "eps": eps}]
 
     if 'adam' in cfg.train.optim:

@@ -15,6 +15,8 @@ from lib.datasets.preprocess import process_voxels
 from typing import NamedTuple
 from lib.datasets.img_fit.caminfo import CameraInfo4K4D
 
+from scipy.ndimage import zoom
+from lib.utils.camera_utils import resize_array
 class Camera:
     def __init__(self,cam_path_intri,cam_path_extri) -> None:
         # data/my_387/optimized
@@ -47,7 +49,7 @@ class Camera:
                 mask=imageio.imread(os.path.join(mask_path,cam_angle,mask_file))
                 mask=np.array(mask).astype(np.float32)
                 mask_angle.append(mask)
-                if index>1:
+                if index==0:
                     break
             mask_angle=np.stack(mask_angle)
             
@@ -61,11 +63,11 @@ class Camera:
             # Intrinsics
             cam_dict={}
             
-            cam_dict['K'] = self.read('K_{}'.format(cam),True)
+            cam_dict['K'] = self.read('K_{}'.format(cam),True)/4
             cam_dict['H'] = int(self.read('H_{}'.format(cam), True,dt='real')) or -1
             cam_dict['W']= int(self.read('W_{}'.format(cam), True,dt='real')) or -1
-            cam_dict['H']=1024
-            cam_dict['W']=1024
+            cam_dict['H']= 256
+            cam_dict['W']= 256
             cam_dict['invK'] = np.linalg.inv(cam_dict['K'])
 
             # Extrinsics
@@ -168,9 +170,9 @@ class Dataset(data.Dataset):
             now_angle_images=[]
             for index,image_file in enumerate(image_files):
                 image=imageio.imread(os.path.join(image_path,angle,image_file))/255
-
+                image=resize_array(image,(256,256,3))
                 now_angle_images.append(image)
-                if index>1:
+                if index==0:
                     break
             self.img.append(np.stack(now_angle_images))
         self.img=np.stack(self.img)
@@ -186,7 +188,7 @@ class Dataset(data.Dataset):
         cam_index=index%self.camera_len
         time_step_index=index//self.camera_len
         cam=self.camera.get_camera(cam_index)
-        pcd=self.camera.get_pcds(time_step_index)
+        # pcd=self.camera.get_pcds(time_step_index)
         # pcd=pcd.reshape(-1,3)
         t_bounds=np.array([0.0,self.time_step_len-1]).reshape(2,-1)
         wbounds=cam.bounds
@@ -195,8 +197,9 @@ class Dataset(data.Dataset):
         rgb=self.img[cam_index,time_step_index]
         ret = {'rgb': rgb} # input and output. they will be sent to cuda
         
-        ret.update({'pcd': pcd,'cam':cam,"time_step":time_step_index,"cam_index":cam_index,"wbounds":wbounds})
+        ret.update({'pcd': time_step_index,'cam':cam,"time_step":time_step_index,"cam_index":cam_index,"wbounds":wbounds})
         ret.update({'rays_o':cam.T })
+        ret.update({"R":cam.R,"K":cam.K,"P":cam.P,"RT":cam.RT})
         ret.update({'meta': {'H': self.img.shape[2], 'W': self.img.shape[3]}}) # meta means no need to send to cuda
         N_reference_images_index,projections= self.get_nearest_pose_cameras(cam_index)
         rgb_reference_images=self.img[N_reference_images_index,time_step_index]

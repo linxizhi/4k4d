@@ -7,14 +7,14 @@ from lib.utils.sh_utils import eval_sh,SH2RGB
 def project_xyz_to_uv(projection:torch.Tensor,xyz:torch.Tensor):
     xyz=xyz.reshape(-1,3)
 
-    projection=projection.squeeze()
+    projection=projection.squeeze(0)
     ones_w=torch.ones(xyz.shape[0],1,device=xyz.device,dtype=xyz.dtype)
     xyzw=torch.cat([xyz,ones_w],dim=-1)
     xyz=xyz.unsqueeze(0).repeat(projection.shape[0],1,1)
     
     projection=projection.unsqueeze(1).repeat(1,xyz.shape[1],1,1)
     uvw=torch.matmul(projection,xyzw.unsqueeze(-1)).squeeze()
-    w=uvw[:,:,2].unsqueeze(-1)+1e-6
+    w=uvw[...,2].unsqueeze(-1)+1e-6
     uv=uvw[...,:2]/w
     return uv
 def get_normalized_uv(uv,H,W):
@@ -23,6 +23,12 @@ def get_normalized_uv(uv,H,W):
     uv=torch.clamp(uv,max=torch.tensor([W-1,H-1],device=uv.device,dtype=uv.dtype))
     uv=2*uv/torch.tensor([W-1,H-1],device=uv.device,dtype=uv.dtype)-1
     return uv
+def set_to_ndc_corrd(uv,H,W):
+    uv=torch.clamp(uv,min=0)
+    uv=torch.clamp(uv,max=torch.tensor([W-1,H-1],device=uv.device,dtype=uv.dtype))
+    uv=(uv+0.5)/torch.tensor([W,H],device=uv.device,dtype=uv.dtype)
+    return uv
+
 def get_bilinear_feature(feature_map,rgb_map,uv):
     rgb_map=rgb_map.float()
     uv=uv.float()
@@ -72,5 +78,5 @@ class IBRnet(nn.Module):
         rgb_shs=SH2RGB(rgb_showed_in_shs)
         
         rgb_compose=rgb_discrete+rgb_shs
-        
+        rgb_compose=torch.clip(rgb_compose,0,1)
         return rgb_compose,rgb_discrete,rgb_shs

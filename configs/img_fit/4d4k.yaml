@@ -21,7 +21,7 @@ network:
         level_dim: 2
     Geometry_Encoder:
         D: 2
-        W: 128
+        W: 64
         input_ch: 192
         output_ch: 2
     IBRnet:
@@ -34,7 +34,7 @@ network:
             output_ch: 1
         SH_consistent_encoder:
             D: 2
-            W: 128
+            W: 64
             input_ch: 192
             degree : 3
 
