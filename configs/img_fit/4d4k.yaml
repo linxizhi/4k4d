@@ -17,12 +17,12 @@ task_arg:
 network:
     use_sigmoid: True
     Fourplane_Encoder:
-        aggregation: 'sum'
+        aggregation: 'concat'
         level_dim: 4
     Geometry_Encoder:
         D: 2
         W: 64
-        input_ch: 64
+        input_ch: 384
         output_ch: 2
     IBRnet:
         Feature_map_encoder:
@@ -30,12 +30,12 @@ network:
         Weights_encoder:
             D: 1
             W: 64
-            input_ch: 99
+            input_ch: 419
             output_ch: 1
         SH_consistent_encoder:
             D: 2
             W: 64
-            input_ch: 64
+            input_ch: 384
             degree : 3
 
 

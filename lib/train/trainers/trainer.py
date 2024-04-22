@@ -56,6 +56,7 @@ class Trainer(object):
             # training stage: loss; optimizer; scheduler
             loss = loss.mean()
             optimizer.zero_grad()
+            # loss=loss.float()
             loss.backward()
             torch.nn.utils.clip_grad_value_(self.network.parameters(), 40)
             optimizer.step()

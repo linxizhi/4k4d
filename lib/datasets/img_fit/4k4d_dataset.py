@@ -40,12 +40,32 @@ class Camera:
         self.get_masks()
         self.all_masks=np.stack(self.all_masks)
         self.all_timestep_pcds=[]
+        self.mask_max_len_x=0
+        self.mask_max_len_y=0
         for i in range(self.all_masks.shape[1]):
             mask=torch.tensor(self.all_masks)[:,i,:,:]
         # bouding_box=self.extrix_file.getNode("bounds_00").mat()
         
             voxel_now_step=process_voxels(cfg,self.cameras_all,mask,pcd_index=i)
             self.all_timestep_pcds.append(voxel_now_step)
+        self.delet_bg()
+
+    def delet_bg(self):
+        masks=self.all_masks
+        rgb_reference_images_list=[]
+        
+        max_len_x=0
+        max_len_y=0
+        masks=masks.reshape(-1,masks.shape[-2],masks.shape[-1])
+        for index,mask in enumerate(masks):
+            mask_min_x,mask_max_x,mask_min_y,mask_max_y=np.where(mask>0)[0].min(),np.where(mask>0)[0].max(),np.where(mask>0)[1].min(),np.where(mask>0)[1].max()
+            if (mask_max_x-mask_min_x>max_len_x):
+                max_len_x=mask_max_x-mask_min_x
+            if (mask_max_y-mask_min_y>max_len_y):
+                max_len_y=mask_max_y-mask_min_y
+        self.mask_max_len_x=max_len_x
+        self.mask_max_len_y=max_len_y
+    
     def get_masks(self):
         mask_path=os.path.join(cfg.train_dataset['data_root'],'masks')
         angles_all=os.listdir(mask_path)
@@ -196,6 +216,8 @@ class Dataset(data.Dataset):
         
 
     def __getitem__(self, index):
+        max_len_x=self.camera.mask_max_len_x
+        max_len_y=self.camera.mask_max_len_y
         cam_index=index%self.camera_len
         time_step_index=index//self.camera_len
         cam=self.camera.get_camera(cam_index)
@@ -206,37 +228,46 @@ class Dataset(data.Dataset):
         wbounds=np.concatenate([wbounds,t_bounds],axis=1)
         # wbounds=wbounds.reshape(-1)
         rgb=self.img[cam_index,time_step_index]
-        ret = {'rgb': rgb} # input and output. they will be sent to cuda
         mask=self.camera.all_masks[cam_index,time_step_index,:,:]
+        
+        mask_min_x,mask_max_x,mask_min_y,mask_max_y=np.where(mask>0)[0].min(),np.where(mask>0)[0].max(),np.where(mask>0)[1].min(),np.where(mask>0)[1].max()
+            # rgb_reference_images_list.append(rgb_reference_images[index,mask_min_x:mask_max_x,mask_min_y:mask_max_y,:])
+        rgb=rgb[mask_min_x:mask_max_x,mask_min_y:mask_max_y,:]
+        uv_rgb=np.array([mask_min_x,mask_min_y])
+        rgb=pad_image(rgb,(max_len_x,max_len_y,3))
+        mask=mask[mask_min_x:mask_max_x,mask_min_y:mask_max_y]
+        mask=pad_image(mask,(max_len_x,max_len_y))
+        ret = {'rgb': rgb} # input and output. they will be sent to cuda
         ret.update({'mask':mask})
         ret.update({'pcd': time_step_index,'cam':cam,"time_step":time_step_index,"cam_index":cam_index,"wbounds":wbounds})
         ret.update({'rays_o':cam.T })
         ret.update({"R":cam.R,"K":cam.K,"P":cam.P,"RT":cam.RT,"near":cam.n,"far":cam.f,"fov":cam.fov})
-        ret.update({'meta': {'H': self.img.shape[2], 'W': self.img.shape[3]}}) # meta means no need to send to cuda
+        ret.update({'meta': {'H': max_len_x, 'W': max_len_y}}) # meta means no need to send to cuda
         N_reference_images_index,projections= self.get_nearest_pose_cameras(cam_index)
         rgb_reference_images=self.img[N_reference_images_index,time_step_index]
         
         ret.update({"N_reference_images_index":N_reference_images_index})
         masks=self.camera.all_masks[N_reference_images_index]
         rgb_reference_images_list=[]
+
         
-        max_len_x=0
-        max_len_y=0
+        smallest_uv=[]
+        
         for index,mask in enumerate(masks):
             mask_min_x,mask_max_x,mask_min_y,mask_max_y=np.where(mask>0)[1].min(),np.where(mask>0)[1].max(),np.where(mask>0)[2].min(),np.where(mask>0)[2].max()
-            mask_min_x,mask_max_x,mask_min_y,mask_max_y=int(mask_min_x/4),int(mask_max_x/4),int(mask_min_y/4),int(mask_max_y/4)
             rgb_reference_images_list.append(rgb_reference_images[index,mask_min_x:mask_max_x,mask_min_y:mask_max_y,:])
-            if (mask_max_x-mask_min_x>max_len_x):
-                max_len_x=mask_max_x-mask_min_x
-            if (mask_max_y-mask_min_y>max_len_y):
-                max_len_y=mask_max_y-mask_min_y
+            uv_temp=np.array([mask_min_x,mask_min_y])
+            smallest_uv.append(uv_temp)
+        smallest_uv=np.stack(smallest_uv)   
         rgb_reference_images_list_final=[]
         for rgb_reference_image in rgb_reference_images_list:
             rgb_reference_image_temp=pad_image(rgb_reference_image,(max_len_x,max_len_y,3))
             rgb_reference_images_list_final.append(rgb_reference_image_temp)
         rgb_reference_images_list_final=np.stack(rgb_reference_images_list_final)
-        ret.update({"rgb_reference_images":rgb_reference_images})
+        ret.update({"rgb_reference_images":rgb_reference_images_list_final})
         ret.update({"projections":projections})
+        ret.update({"uv_rgb":uv_rgb})
+        ret.update({"smallest_uv":smallest_uv})
         
         return ret
     def get_nearest_pose_cameras(self,now_index):

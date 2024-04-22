@@ -130,6 +130,8 @@ class Network(nn.Module):
         rays_o=batch['rays_o']
         H,W=batch['meta']['H'],batch['meta']['W']
         K,R,P,RT=batch['K'],batch['R'],batch['P'],batch['RT']
+        smallest_uv=batch['smallest_uv']
+        uv_rgb=batch['uv_rgb']
 
 
         # xyz=self.turn_pcd_world_to_cam(xyz,RT)
@@ -159,7 +161,7 @@ class Network(nn.Module):
         rays_o_cam=self.turn_pcd_world_to_cam(rays_o,RT)
         direction_each=self.get_normalized_direction(xyz,rays_o)
         rgb_references=rgb_reference_images.squeeze(0).permute(0,3,1,2).float()
-        rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature)
+        rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature,uv_rgb)
         # self.project_pcd_to_ndc(xyz, K, RT, rays_o)
         # prepare_feedback_transform(H, W, K,R,rays_o,self.near,self.far,xyz)
         self.save_image(batch['rgb'],0)

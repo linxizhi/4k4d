@@ -39,8 +39,12 @@ def get_bilinear_feature(feature_map,rgb_map,uv):
     feature_cated=feature_cated.squeeze().permute(0,2,1)
     return feature_cated
     
-def get_rgb_feature(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:torch.TensorType,projection:torch.Tensor,H:torch.Tensor,W:torch.Tensor):
+def get_rgb_feature(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:torch.TensorType,projection:torch.Tensor,H:torch.Tensor,W:torch.Tensor,uv_rgb):
     uv=project_xyz_to_uv(projection,xyz)/4
+    print(torch.max(uv[...,0]))
+    uv_rgb=uv_rgb.unsqueeze(0).repeat(uv.shape[0],uv.shape[1],1)
+    uv=uv.flip(-1)
+    uv-=uv_rgb
     uv=get_normalized_uv(uv,H,W)
     rgb_feature=get_bilinear_feature(feature_map,rgb_map,uv)
     return rgb_feature
@@ -57,13 +61,13 @@ class IBRnet(nn.Module):
         sh_config=ibr_cfg['SH_consistent_encoder']
         self.sh_degree=sh_config["degree"]
         self.SH_consistent_Encoder=SH_MLP(**sh_config)
-    def forward(self,rgbs,xyz,projection,H,W,direction,xyz_feature):
+    def forward(self,rgbs,xyz,projection,H,W,direction,xyz_feature,uv_rgb):
         rgb_map=rgbs
         if self.cfg['Feature_map_encoder']['coarse_only']:
             feature_map_corse,_=self.feature_map_encoder(rgbs)
         else:
             feature_map_corse,feature_map_fine=self.feature_map_encoder(rgbs)
-        rgb_feature=get_rgb_feature(feature_map_corse,rgb_map,xyz,projection,H,W)
+        rgb_feature=get_rgb_feature(feature_map_corse,rgb_map,xyz,projection,H,W,uv_rgb)
         rgb_raw=rgb_feature[...,:3].permute(1,0,2)
         xyz_feature_repeat=xyz_feature.unsqueeze(0).repeat(rgb_feature.shape[0],1,1)
         feature_compose_xyz_rgb=torch.cat([rgb_feature,xyz_feature_repeat],dim=-1)
@@ -79,6 +83,6 @@ class IBRnet(nn.Module):
         rgb_shs=SH2RGB(rgb_showed_in_shs)
         rgb_shs=rgb_shs.clip(min=0)
         
-        rgb_compose=rgb_discrete+rgb_shs
+        rgb_compose=rgb_discrete+rgb_shs*0.0001
         rgb_compose=torch.clip(rgb_compose,0,1)
         return rgb_compose,rgb_discrete,rgb_shs
