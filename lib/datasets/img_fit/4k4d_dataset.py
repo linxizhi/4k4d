@@ -101,6 +101,8 @@ class Camera:
             cam_dict['bounds'] = self.read('bounds_{}'.format(cam),False)
             cam_dict['bounds'] = np.array([[-1e6, -1e6, -1e6], [1e6, 1e6, 1e6]]) if cam_dict['bounds'] is None else cam_dict['bounds']
 
+            cam_dict['fov']=2*np.arctan(cam_dict['W']/(2*cam_dict['K'][0,0]))
+
             # CCM
             cam_dict['ccm'] = self.read('ccm_{}'.format(cam),True)
             cam_dict['ccm'] = np.eye(3) if cam_dict['ccm'] is None else cam_dict['ccm']          
@@ -199,7 +201,7 @@ class Dataset(data.Dataset):
         
         ret.update({'pcd': time_step_index,'cam':cam,"time_step":time_step_index,"cam_index":cam_index,"wbounds":wbounds})
         ret.update({'rays_o':cam.T })
-        ret.update({"R":cam.R,"K":cam.K,"P":cam.P,"RT":cam.RT})
+        ret.update({"R":cam.R,"K":cam.K,"P":cam.P,"RT":cam.RT,"near":cam.n,"far":cam.f,"fov":cam.fov})
         ret.update({'meta': {'H': self.img.shape[2], 'W': self.img.shape[3]}}) # meta means no need to send to cuda
         N_reference_images_index,projections= self.get_nearest_pose_cameras(cam_index)
         rgb_reference_images=self.img[N_reference_images_index,time_step_index]

@@ -75,8 +75,10 @@ class IBRnet(nn.Module):
         
         shs=self.SH_consistent_Encoder(xyz_feature)
         rgb_showed_in_shs=eval_sh(self.sh_degree,shs,direction.reshape(-1,3))
+        # rgb_shs=rgb_showed_in_shs.tanh()*0.25
         rgb_shs=SH2RGB(rgb_showed_in_shs)
+        rgb_shs=rgb_shs.clip(min=0)
         
-        rgb_compose=rgb_discrete+rgb_shs
+        rgb_compose=rgb_discrete+rgb_shs*0.25
         rgb_compose=torch.clip(rgb_compose,0,1)
         return rgb_compose,rgb_discrete,rgb_shs

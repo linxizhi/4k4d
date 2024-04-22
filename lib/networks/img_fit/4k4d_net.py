@@ -8,7 +8,7 @@ from lib.networks.blocks.resunet import ResUNet
 from lib.networks.blocks.ibrnet import IBRnet
 from lib.config import cfg
 from lib.networks.blocks.ibrnet import project_xyz_to_uv ,set_to_ndc_corrd
-from lib.utils.camera_utils import prepare_feedback_transform
+from lib.utils.camera_utils import prepare_feedback_transform,affine_inverse
 from pytorch3d.structures import Pointclouds
 from pytorch3d.renderer.points.rasterizer import rasterize_points
 from pytorch3d.renderer import PerspectiveCameras, PointsRasterizer, AlphaCompositor
@@ -45,10 +45,10 @@ class Network(nn.Module):
             voxel_now_step=process_voxels(cfg,self.cameras_all,mask,pcd_index=i)
             
             self.all_timestep_pcds.update({f"pcd_{i}":voxel_now_step})
-        # to_cuda(self.all_timestep_pcds)
+        # to_cuda(self.allactivation_timestep_pcds)
         self.set_to_cuda()
         self.set_pcd_params()
-        # for key ,value in self.named_parameters():
+        # for key ,value iactivationn self.named_parameters():
         #     print(key)
         # a=0
     def set_to_cuda(self):
@@ -82,9 +82,25 @@ class Network(nn.Module):
         rays_d=xyz-ray_o.repeat(1,xyz.shape[1],1)
         rays_d=rays_d/torch.norm(rays_d,dim=-1,keepdim=True)
         return rays_d
+    def turn_pcd_world_to_cam(self,pcd,RT):
+        pcd=pcd.reshape(-1,3)
+        w2c_cat=torch.tensor([[[0,0,0,1.0]]],device=pcd.device,dtype=pcd.dtype)
+        w2cs=torch.cat([RT,w2c_cat],dim=1)
+        # c2w=affine_inverse(w2cs)
+        # w2c=affine_inverse(c2w)
+        pcdw=torch.cat([pcd,torch.ones(pcd.shape[0],1,device=pcd.device,dtype=pcd.dtype)],dim=-1)
+        w2c_repeat=w2cs.repeat(pcd.shape[0],1,1)
+        # RT_repeat=RT.repeat(pcd.shape[0],1,1)
+        pcdw_cam=torch.bmm(w2c_repeat,pcdw.unsqueeze(-1)).squeeze(-1)
+        pcd_cam=pcdw_cam.clone()[...,:-1]
+        pcd_cam=pcd_cam.unsqueeze(0)
+        return pcd_cam
+    
     def forward(self,batch):
         pcd_idx=batch['pcd'].item()
         
+        self.near=batch['near']
+        self.far=batch['far']
         xyz=self.all_timestep_pcds[f"pcd_{pcd_idx}"]
         # xyz=xyz.reshape(-1,3)
         rgb=batch['rgb']
@@ -94,6 +110,9 @@ class Network(nn.Module):
         rays_o=batch['rays_o']
         H,W=batch['meta']['H'],batch['meta']['W']
         K,R,P,RT=batch['K'],batch['R'],batch['P'],batch['RT']
+        xyz=self.turn_pcd_world_to_cam(xyz,RT)
+        wbounds=self.turn_pcd_world_to_cam(wbounds,RT)
+        fov=batch['fov']
         projections=batch['projections']
         rgb_reference_images=batch['rgb_reference_images']
         
@@ -105,13 +124,15 @@ class Network(nn.Module):
         radius=sigmas_radius[...,1]
         if self.use_sigmoid:
             sigmas=F.sigmoid(sigmas)
-            # radius=F.sigmoid(radius)
+            # print(torch.min(radius),torch.max(radius))
+            radius=F.sigmoid(radius)
+            # radius=radius.clip(min=0)
         direction_each=self.get_normalized_direction(xyz,rays_o)
         rgb_references=rgb_reference_images.squeeze(0).permute(0,3,1,2).float()
         rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature)
         # self.project_pcd_to_ndc(xyz, K, RT, rays_o)
         # prepare_feedback_transform(H, W, K,R,rays_o,self.near,self.far,xyz)
-        rgb_out,weight_out=self.render(rgb_compose,xyz,P.unsqueeze(0),H,W,sigmas,radius,K,RT,rays_o,R)
+        rgb_out,weight_out=self.render(rgb_compose,xyz,P.unsqueeze(0),H,W,sigmas,radius,K,RT,rays_o,R,fov)
         out={}
         out.update({"rgb":rgb_out,"weight":weight_out})
         return out
@@ -203,16 +224,28 @@ class Network(nn.Module):
         weights_f=weights_f.reshape(-1)
         return weights_f
         
-        
+    def get_ndc_radius(self,fov,z,radius):
+        fov=fov.float()
+        z=z.float()
+        radius=radius.float()
+        max_radius=2*torch.tan(fov/2)*z
+        max_radius=max_radius.reshape(-1)
+        ndc_radius=radius/max_radius
+        ndc_radius=torch.abs(ndc_radius)
+        return ndc_radius
     
     
-    def render(self,rgb_compose,xyz,projection,H,W,sigmas,radius,K,RT,ray_o,R):
+    def render(self,rgb_compose,xyz,projection,H,W,sigmas,radius,K,RT,ray_o,R,fov):
         
         H_d,W_d=H.item(),W.item()
-        ndc_corrd=prepare_feedback_transform(H,W,K,R,ray_o,self.near,self.far,xyz)
+        ndc_corrd,ndc_w=prepare_feedback_transform(H,W,K,R,ray_o,self.near,self.far,xyz)
+        # print(torch.max(ndc_corrd[...,0]),torch.min(ndc_corrd[...,0]))
+        # print(torch.max(ndc_corrd[...,1]),torch.min(ndc_corrd[...,1]))
+        # print(torch.max(ndc_corrd[...,2]),torch.min(ndc_corrd[...,2]))
         
-        ndc_radius = torch.abs(K[..., 1, 1][..., None] * radius[..., 0] / (ndc_corrd[..., -1] + 1e-10)).reshape(-1)/1000
-
+        self.save_npy(ndc_corrd)
+        # ndc_radius = torch.abs(K[..., 1, 1][..., None] * radius[..., 0] / (ndc_w+ 1e-10)).reshape(-1)/1000
+        ndc_radius=self.get_ndc_radius(fov,ndc_w,radius)
     
         ndc_corrd=ndc_corrd.unsqueeze(0).float()
         ndc_corrd=ndc_corrd.reshape(1,-1,3)
@@ -245,8 +278,9 @@ class Network(nn.Module):
         sigmas_each_pixel=sigmas_new[idx_c]
         radius_each_pixel=ndc_radius_new[idx_c]
         pcd_real_sigma=sigmas_each_pixel*(1-dists_c/(radius_each_pixel*radius_each_pixel))
-        pcd_real_sigma_clip=pcd_real_sigma.clip(min=0)
         
+        pcd_real_sigma_clip=pcd_real_sigma.clip(min=0)
+        print(torch.max(pcd_real_sigma),torch.min(pcd_real_sigma))
         rgbs_each_pixel=rgb_compose_new.reshape(-1,3)[idx_c]
         
         

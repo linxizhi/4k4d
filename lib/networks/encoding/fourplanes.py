@@ -8,6 +8,7 @@ class FourPlane(nn.Module):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__()
         config_for_planes = cfg.network['Fourplane_Encoder']
+        self.out_activation=config_for_planes["aggregation"]
         if config_for_planes["aggregation"] == "concat":
             self.out_dims=6*32
         plane_config={}
@@ -37,5 +38,10 @@ class FourPlane(nn.Module):
         tx_feat = self.tx_plane(inputs[..., [0, 3]])
         ty_feat = self.ty_plane(inputs[..., [1, 3]])
         tz_feat = self.tz_plane(inputs[..., [2, 3]])
-        return torch.cat([xy_feat, yz_feat, xz_feat,tx_feat,ty_feat,tz_feat], dim=-1)
-        
+        if self.out_activation=="concat":
+            return torch.cat([xy_feat, yz_feat, xz_feat,tx_feat,ty_feat,tz_feat], dim=-1)
+        if self.out_activation=='sum':
+            feature=torch.stack([xy_feat, yz_feat, xz_feat,tx_feat,ty_feat,tz_feat], dim=0)
+            feature=torch.sum(feature,dim=0)
+            return feature
+            # return torch.sum([xy_feat, yz_feat, xz_feat,tx_feat,ty_feat,tz_feat], dim=-1)
