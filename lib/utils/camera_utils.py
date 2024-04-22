@@ -51,15 +51,15 @@ def prepare_feedback_transform(H: int, W: int, K: torch.Tensor, R: torch.Tensor,
                                n: torch.Tensor,
                                f: torch.Tensor,
                                xyz: torch.Tensor):
-    ixt = set_ndc_matrix(K, H, W, n, f).to(xyz.dtype)  # to opengl, remove last dim of n and f
+    # ixt = set_ndc_matrix(K, H, W, n, f).to(xyz.dtype)  # to opengl, remove last dim of n and f
     H,W=H.to(device=xyz.device),W.to(device=xyz.device)
-    # ixt=get_ndc_matrix(K,H,W,n,f)
+    ixt=get_ndc_matrix(K,H,W,n,f)
     
     w2c = affine_padding(torch.cat([R, T], dim=-1)).to(xyz.dtype)
     c2w = affine_inverse(w2c)
-    c2w[..., 0] *= 1  # flip x
-    c2w[..., 1] *= -1  # flip y
-    c2w[..., 2] *= -1  # flip z
+    # c2w[..., 0] *= 1  # flip x
+    # c2w[..., 1] *= -1  # flip y
+    # c2w[..., 2] *= -1  # flip z
     ext = affine_inverse(c2w)
     pix_xyz = torch.cat([xyz, torch.ones_like(xyz[..., :1])], dim=-1) @ ext.mT @ ixt.mT
     ndc_xyz=pix_xyz[..., :-1]

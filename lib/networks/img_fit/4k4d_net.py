@@ -20,7 +20,8 @@ import pytorch3d
 import numpy as np
 from lib.utils.data_utils import to_cuda
 
-
+# from easyvolcap.engine import SAMPLERS, EMBEDDERS, REGRESSORS
+# from easyvolcap.models.networks.embedders.kplanes_embedder import KPlanesEmbedder
 class Network(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -33,13 +34,19 @@ class Network(nn.Module):
         self.ibrnet=IBRnet(ibrnet_config)
         self.near=0.1
         self.far=10
-        self.K_points=20
+        self.K_points=15
         self.all_masks=[]
         self.get_masks()
         self.all_masks=np.stack(self.all_masks)
         self.all_timestep_pcds={}
         self.cameras_all=[]
-    
+        self.sigma_shift=-5.0
+        self.radius_shift=-5.0
+        self.radius_min=0.01
+        self.radius_max=0.015
+        
+        # self.pcd_embedder= KPlanesEmbedder()
+        
         for i in range(self.all_masks.shape[1]):
             mask=torch.tensor(self.all_masks)[:,i,:,:]
             voxel_now_step=process_voxels(cfg,self.cameras_all,mask,pcd_index=i)
@@ -48,9 +55,9 @@ class Network(nn.Module):
         # to_cuda(self.allactivation_timestep_pcds)
         self.set_to_cuda()
         self.set_pcd_params()
-        # for key ,value iactivationn self.named_parameters():
-        #     print(key)
-        # a=0
+        for key ,param in self.named_parameters():
+            print(key)
+
     def set_to_cuda(self):
         for key in self.all_timestep_pcds.keys():
             self.all_timestep_pcds[key]=torch.tensor(self.all_timestep_pcds[key]).unsqueeze(0) .cuda()
@@ -58,6 +65,19 @@ class Network(nn.Module):
         self.all_timestep_pcds=nn.ParameterDict(self.all_timestep_pcds)
     def get_xyz(self):
         self.xyz=0
+        
+    def geo_actvn(self,sigma,radius):
+        a=sigma
+        r=radius
+        radius_min=self.radius_min
+        radius_max=self.radius_max
+        radius_shift=self.radius_shift
+        sigma_shift=self.sigma_shift
+        r = (r + radius_shift).sigmoid() * (radius_max - radius_min) + radius_min
+        a = (a + sigma_shift).sigmoid()
+        return r, a    
+        
+    
     def get_masks(self):
         mask_path=os.path.join(cfg.train_dataset['data_root'],'masks')
         angles_all=os.listdir(mask_path)
@@ -110,8 +130,17 @@ class Network(nn.Module):
         rays_o=batch['rays_o']
         H,W=batch['meta']['H'],batch['meta']['W']
         K,R,P,RT=batch['K'],batch['R'],batch['P'],batch['RT']
-        xyz=self.turn_pcd_world_to_cam(xyz,RT)
-        wbounds=self.turn_pcd_world_to_cam(wbounds,RT)
+
+
+        # xyz=self.turn_pcd_world_to_cam(xyz,RT)
+
+        wbounds_space_max=torch.max(xyz,dim=1,keepdim=True)[0]
+        wbounds_space_min=torch.min(xyz,dim=1,keepdim=True)[0]
+        wbounds_space=torch.cat([wbounds_space_min,wbounds_space_max],dim=1)
+        wbounds[...,:-1]=wbounds_space
+        # wbounds[...,:-1]=wbounds_space
+        
+        
         fov=batch['fov']
         projections=batch['projections']
         rgb_reference_images=batch['rgb_reference_images']
@@ -123,15 +152,17 @@ class Network(nn.Module):
         sigmas=sigmas_radius[...,0]
         radius=sigmas_radius[...,1]
         if self.use_sigmoid:
-            sigmas=F.sigmoid(sigmas)
+            radius,sigmas=self.geo_actvn(sigmas,radius)
             # print(torch.min(radius),torch.max(radius))
-            radius=F.sigmoid(radius)
+            # radius=F.sigmoid(radius)
             # radius=radius.clip(min=0)
+        rays_o_cam=self.turn_pcd_world_to_cam(rays_o,RT)
         direction_each=self.get_normalized_direction(xyz,rays_o)
         rgb_references=rgb_reference_images.squeeze(0).permute(0,3,1,2).float()
         rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature)
         # self.project_pcd_to_ndc(xyz, K, RT, rays_o)
         # prepare_feedback_transform(H, W, K,R,rays_o,self.near,self.far,xyz)
+        self.save_image(batch['rgb'],0)
         rgb_out,weight_out=self.render(rgb_compose,xyz,P.unsqueeze(0),H,W,sigmas,radius,K,RT,rays_o,R,fov)
         out={}
         out.update({"rgb":rgb_out,"weight":weight_out})
@@ -189,13 +220,16 @@ class Network(nn.Module):
         
     def translate(self,R,T,P):
         return torch.cat([torch.cat([R.mT, -R.mT @ T], dim=-1), P], dim=-2)
-    def save_image(self,rgb):
+    def save_image(self,rgb,ii=None):
         rgb=rgb.clone().detach()
         rgb=rgb.squeeze(0).cpu().numpy()
         rgb=rgb*255
         rgb=rgb.astype(np.uint8)
         import cv2
-        cv2.imwrite("test.png",rgb)
+        if ii is None:
+            cv2.imwrite("test.png",rgb)
+        else:
+            cv2.imwrite(f"test_{ii}.png",rgb)
     def save_npy(self,coord):
         coord=coord.clone().detach()
         coord=coord.squeeze(0).cpu().numpy()

@@ -22,6 +22,7 @@ class FourPlane(nn.Module):
         self.ty_plane = Plane(**plane_config)
         self.tz_plane = Plane(**plane_config)
     def forward(self, xyz,timesteps,wbounds):
+        wbounds=wbounds.reshape(-1)
         xyz=xyz.reshape(-1,3)
         timesteps_re=timesteps.reshape(-1,1).repeat(xyz.shape[0],1)
         xyzt=torch.cat([xyz,timesteps_re],dim=-1)
@@ -32,6 +33,7 @@ class FourPlane(nn.Module):
         inputs = inputs - wbounds[None][:, :4]
         inputs = inputs / ((wbounds[4:8] - wbounds[:4]).max().item() + eps)
         
+        print(torch.max(inputs),torch.min(inputs))
         xy_feat = self.xy_plane(inputs[..., [0, 1]])
         yz_feat = self.yz_plane(inputs[..., [1, 2]])
         xz_feat = self.xz_plane(inputs[..., [0, 2]])

@@ -20,6 +20,8 @@ def make_optimizer(cfg, net):
             continue
         if key.startswith('all_timestep_pcds'):
             lr=1e-5
+        if key.startswith('geometry_mlp'):
+            lr=5e-4
         else:
             lr=cfg.train.lr
         params += [{"params": [value], "lr": lr, "weight_decay": weight_decay, "eps": eps}]

@@ -48,7 +48,7 @@ train_dataset:
     input_ratio: 1.
     iteration: 1
     voxel_num_start: 100
-    nearset_num: 8
+    nearset_num: 4
 
 test_dataset:
     data_root: 'data/my_387'
@@ -61,11 +61,13 @@ train:
     lr: 5e-3
     weight_decay: 0.
     epoch: 20 # 100 * 500
-    scheduler:
-        type: 'exponential'
-        gamma: 0.1
-        decay_epochs: 20
+    # scheduler:
+    #     type: 'exponential'
+    #     gamma: 0.1
+    #     decay_epochs: 20
     num_workers: 1
+    lambda_lpips: 0.001
+    lambda_mask: 0.001
 
 test:
     batch_size: 1

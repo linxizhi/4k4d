@@ -40,7 +40,7 @@ def get_bilinear_feature(feature_map,rgb_map,uv):
     return feature_cated
     
 def get_rgb_feature(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:torch.TensorType,projection:torch.Tensor,H:torch.Tensor,W:torch.Tensor):
-    uv=project_xyz_to_uv(projection,xyz)
+    uv=project_xyz_to_uv(projection,xyz)/4
     uv=get_normalized_uv(uv,H,W)
     rgb_feature=get_bilinear_feature(feature_map,rgb_map,uv)
     return rgb_feature
@@ -79,6 +79,6 @@ class IBRnet(nn.Module):
         rgb_shs=SH2RGB(rgb_showed_in_shs)
         rgb_shs=rgb_shs.clip(min=0)
         
-        rgb_compose=rgb_discrete+rgb_shs*0.25
+        rgb_compose=rgb_discrete+rgb_shs
         rgb_compose=torch.clip(rgb_compose,0,1)
         return rgb_compose,rgb_discrete,rgb_shs

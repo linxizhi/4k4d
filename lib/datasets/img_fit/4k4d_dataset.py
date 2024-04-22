@@ -17,6 +17,15 @@ from lib.datasets.img_fit.caminfo import CameraInfo4K4D
 
 from scipy.ndimage import zoom
 from lib.utils.camera_utils import resize_array
+def pad_image(image, target_size):
+
+    pad_dims = [(0, max_size - img_size) for img_size, max_size in zip(image.shape, target_size)]
+    
+
+    padded_image = np.pad(image, pad_dims, mode='constant')
+    
+    return padded_image
+
 class Camera:
     def __init__(self,cam_path_intri,cam_path_extri) -> None:
         # data/my_387/optimized
@@ -172,7 +181,7 @@ class Dataset(data.Dataset):
             now_angle_images=[]
             for index,image_file in enumerate(image_files):
                 image=imageio.imread(os.path.join(image_path,angle,image_file))/255
-                image=resize_array(image,(256,256,3))
+                # image=resize_array(image,(256,256,3))
                 now_angle_images.append(image)
                 if index==0:
                     break
@@ -195,10 +204,11 @@ class Dataset(data.Dataset):
         t_bounds=np.array([0.0,self.time_step_len-1]).reshape(2,-1)
         wbounds=cam.bounds
         wbounds=np.concatenate([wbounds,t_bounds],axis=1)
-        wbounds=wbounds.reshape(-1)
+        # wbounds=wbounds.reshape(-1)
         rgb=self.img[cam_index,time_step_index]
         ret = {'rgb': rgb} # input and output. they will be sent to cuda
-        
+        mask=self.camera.all_masks[cam_index,time_step_index,:,:]
+        ret.update({'mask':mask})
         ret.update({'pcd': time_step_index,'cam':cam,"time_step":time_step_index,"cam_index":cam_index,"wbounds":wbounds})
         ret.update({'rays_o':cam.T })
         ret.update({"R":cam.R,"K":cam.K,"P":cam.P,"RT":cam.RT,"near":cam.n,"far":cam.f,"fov":cam.fov})
@@ -207,6 +217,24 @@ class Dataset(data.Dataset):
         rgb_reference_images=self.img[N_reference_images_index,time_step_index]
         
         ret.update({"N_reference_images_index":N_reference_images_index})
+        masks=self.camera.all_masks[N_reference_images_index]
+        rgb_reference_images_list=[]
+        
+        max_len_x=0
+        max_len_y=0
+        for index,mask in enumerate(masks):
+            mask_min_x,mask_max_x,mask_min_y,mask_max_y=np.where(mask>0)[1].min(),np.where(mask>0)[1].max(),np.where(mask>0)[2].min(),np.where(mask>0)[2].max()
+            mask_min_x,mask_max_x,mask_min_y,mask_max_y=int(mask_min_x/4),int(mask_max_x/4),int(mask_min_y/4),int(mask_max_y/4)
+            rgb_reference_images_list.append(rgb_reference_images[index,mask_min_x:mask_max_x,mask_min_y:mask_max_y,:])
+            if (mask_max_x-mask_min_x>max_len_x):
+                max_len_x=mask_max_x-mask_min_x
+            if (mask_max_y-mask_min_y>max_len_y):
+                max_len_y=mask_max_y-mask_min_y
+        rgb_reference_images_list_final=[]
+        for rgb_reference_image in rgb_reference_images_list:
+            rgb_reference_image_temp=pad_image(rgb_reference_image,(max_len_x,max_len_y,3))
+            rgb_reference_images_list_final.append(rgb_reference_image_temp)
+        rgb_reference_images_list_final=np.stack(rgb_reference_images_list_final)
         ret.update({"rgb_reference_images":rgb_reference_images})
         ret.update({"projections":projections})
         
