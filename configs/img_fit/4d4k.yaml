@@ -3,8 +3,8 @@ gpus: [0]
 exp_name: 'img_fit'
 scene: 'lego'
 
-train_dataset_module: lib.datasets.img_fit.4k4d_dataset
-test_dataset_module: lib.datasets.img_fit.4k4d_dataset
+train_dataset_module: lib.datasets.img_fit.fourk4d_dataset
+test_dataset_module: lib.datasets.img_fit.fourk4d_val
 network_module: lib.networks.img_fit.4k4d_net
 loss_module: lib.train.losses.img_fit
 evaluator_module: lib.evaluators.img_fit
@@ -73,6 +73,6 @@ test:
     batch_size: 1
 
 ep_iter: 500
-eval_ep: 10       # 50 iterations
+eval_ep: 1       # 50 iterations
 save_latest_ep: 20 # 10000 iterations
 log_interval: 100

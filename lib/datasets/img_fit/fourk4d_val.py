@@ -184,7 +184,7 @@ class Dataset(data.Dataset):
         self.camera_len=self.camera.get_camera_length
         self.time_step_len=self.camera.get_timestep_length
 
-        self.len=self.camera_len*self.time_step_len
+        self.len=self.time_step_len
 
         self.input_ratio = kwargs['input_ratio']
         self.data_root = data_root
@@ -216,7 +216,8 @@ class Dataset(data.Dataset):
         
 
     def __getitem__(self, index):
-        # index=0
+        index*=self.camera_len
+        index+=self.camera_len-1
         max_len_x=self.camera.mask_max_len_x
         max_len_y=self.camera.mask_max_len_y
         cam_index=index%self.camera_len

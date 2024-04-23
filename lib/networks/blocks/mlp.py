@@ -23,6 +23,9 @@ class MLP(nn.Module):
             self.output_activation=out_activation()
         else:
             self.output_activation=None
+        self.init_weights()
+    def init_weights(self):
+        self.output_linear.bias.data.normal_(0, std=1e-4) 
 
 
     def forward(self,features):

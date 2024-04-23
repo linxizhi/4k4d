@@ -40,12 +40,12 @@ def get_bilinear_feature(feature_map,rgb_map,uv):
     return feature_cated
     
 def get_rgb_feature(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:torch.TensorType,projection:torch.Tensor,H:torch.Tensor,W:torch.Tensor,uv_rgb):
-    uv=project_xyz_to_uv(projection,xyz)/4
+    uv=project_xyz_to_uv(projection,xyz)
     # print(torch.max(uv[...,0]))
     uv_rgb=uv_rgb.unsqueeze(0).repeat(uv.shape[0],uv.shape[1],1)
     uv_rgb=uv_rgb.flip(-1)
     uv-=uv_rgb
-    uv=get_normalized_uv(uv,156,83)
+    uv=get_normalized_uv(uv,628,344)
     rgb_feature=get_bilinear_feature(feature_map,rgb_map,uv)
     return rgb_feature
 
