@@ -20,6 +20,9 @@ import pytorch3d
 import numpy as np
 from lib.utils.data_utils import to_cuda
 from lib.utils.ndc_utils  import get_ndc
+# from easyvolcap.engine import SAMPLERS, EMBEDDERS, REGRESSORS
+# from easyvolcap.models.networks.embedders.kplanes_embedder import KPlanesEmbedder
+
 
 class Network(nn.Module):
     def __init__(self) -> None:
@@ -42,7 +45,7 @@ class Network(nn.Module):
         self.sigma_shift=-3.0
         self.radius_shift=-3.0
         self.radius_min=0.001
-        self.radius_max=0.015
+        self.radius_max=0.004
         
         # self.pcd_embedder= KPlanesEmbedder()
         
@@ -129,8 +132,8 @@ class Network(nn.Module):
         rays_o=batch['rays_o']
         H,W=batch['meta']['H'],batch['meta']['W']
         K,R,P,RT=batch['K'],batch['R'],batch['P'],batch['RT']
-        smallest_uv=batch['smallest_uv']
-        uv_rgb=batch['uv_rgb']
+        # smallest_uv=batch['smallest_uv']
+        # uv_rgb=batch['uv_rgb']
 
 
         # xyz=self.turn_pcd_world_to_cam(xyz,RT)
@@ -161,7 +164,7 @@ class Network(nn.Module):
         rays_o_cam=rays_o_cam.permute(0,2,1)
         direction_each=self.get_normalized_direction(xyz,(-R.mT@rays_o).mT)
         rgb_references=rgb_reference_images.squeeze(0).permute(0,3,1,2).float()
-        rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature,uv_rgb)
+        rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature)
         # self.project_pcd_to_ndc(xyz, K, RT, rays_o)
         # prepare_feedback_transform(H, W, K,R,rays_o,self.near,self.far,xyz)
         self.save_image(batch['rgb'],0)
@@ -252,14 +255,12 @@ class Network(nn.Module):
 
         return points_ndc    
     def get_weights(self,sigmas,ray_indices):
-        sigmas=sigmas.reshape(-1)
-        ray_indices=ray_indices.reshape(-1)
-        weights_f,_=nerfacc.render_weight_from_alpha(sigmas,None,ray_indices,n_rays=1024*1024)
-        # ones_concat=torch.ones_like(sigmas[...,0:1],device=sigmas.device,dtype=sigmas.dtype)
-        # sigmas_concat=torch.cat([ones_concat,sigmas],dim=-1)
-        # weights_cum=torch.cumprod(sigmas_concat,dim=-1)
-        # weights_f=weights_cum[...,:-1]*(1-sigmas_concat[...,1:])
-        # weights_f=weights_f.reshape(-1)
+
+        ones_concat=torch.ones_like(sigmas[...,0:1],device=sigmas.device,dtype=sigmas.dtype)
+        sigmas_concat=torch.cat([ones_concat,sigmas],dim=-1)
+        weights_cum=torch.cumprod(sigmas_concat,dim=-1)
+        weights_f=weights_cum[...,:-1]*(1-sigmas_concat[...,1:])
+        weights_f=weights_f.reshape(-1)
         return weights_f
         
     def get_ndc_radius(self,fov,z,radius):
@@ -279,10 +280,17 @@ class Network(nn.Module):
         
         
         ndc_corrd,ndc_radius=get_ndc(xyz,K,R,ray_o,H,W,radius)
-
+        
+        # ndc_corrd,ndc_w=prepare_feedback_transform(H,W,K,R,ray_o,self.near,self.far,xyz)
+        # print(torch.max(ndc_corrd[...,0]),torch.min(ndc_corrd[...,0]))
+        # print(torch.max(ndc_corrd[...,1]),torch.min(ndc_corrd[...,1]))
+        # print(torch.max(ndc_corrd[...,2]),torch.min(ndc_corrd[...,2]))
+        
+        self.save_npy(ndc_corrd)
+        # ndc_radius = torch.abs(K[..., 1, 1][..., None] * radius[..., 0] / (ndc_corrd[...,-1:]+ 1e-10)).reshape(-1)
         ndc_radius=ndc_radius.float()
         ndc_radius=ndc_radius.reshape(-1)
-
+        # ndc_radius=self.get_ndc_radius(fov,ndc_w,radius)
     
         ndc_corrd=ndc_corrd.unsqueeze(0).float()
         ndc_corrd=ndc_corrd.reshape(1,-1,3)
@@ -292,25 +300,37 @@ class Network(nn.Module):
 
         idx, depth, dists = rasterize_points(pcd_real, (H.item(), W.item()), ndc_radius_c, self.K_points, 0, None)
 
-        useful_index=idx>-1
-        now_idx=idx[useful_index].reshape(-1)
-        dists_c=dists[useful_index].clip(min=0).reshape(-1)
-        
-        idx_c=now_idx.clone()
+        num=rgb_compose.shape[0]
 
+        dists_c=dists.clip(min=0)
+
+        dists_c=dists_c.reshape(-1)
+        idx=idx.reshape(-1)
+
+
+        rgb_zeros=torch.zeros((1,3)).to(dtype=rgb_compose.dtype,device=rgb_compose.device)
+        sigma_zeros=torch.zeros((1)).to(dtype=sigmas.dtype,device=sigmas.device)
+        radius_zeros=torch.ones((1)).to(dtype=radius.dtype,device=radius.device)
         
-        ray_indices=torch.arange(H_d*W_d,device=ndc_corrd.device).reshape(-1,H_d,W_d,1).repeat(1,1,1,self.K_points)
-        ray_indices=ray_indices[useful_index].reshape(-1)
-        sigmas_each_pixel=sigmas[idx_c]
-        radius_each_pixel=ndc_radius[idx_c]
+        idx_c=idx.clone()
+        idx_c[idx==-1]=num
+        
+        rgb_compose_new=torch.cat([rgb_compose,rgb_zeros],dim=0)
+        sigmas_new=torch.cat([sigmas,sigma_zeros],dim=-1)
+        ndc_radius_new=torch.cat([ndc_radius,radius_zeros],dim=-1)
+        
+        
+        ray_indices=torch.arange(H_d*W_d,device=ndc_corrd.device).reshape(-1,1).repeat(1,self.K_points).reshape(-1)
+        sigmas_each_pixel=sigmas_new[idx_c]
+        radius_each_pixel=ndc_radius_new[idx_c]
         pcd_real_sigma=sigmas_each_pixel*(1-dists_c/(radius_each_pixel*radius_each_pixel))
         
         pcd_real_sigma_clip=pcd_real_sigma.clip(min=0)
         # print(torch.max(pcd_real_sigma),torch.min(pcd_real_sigma))
-        rgbs_each_pixel=rgb_compose.reshape(-1,3)[idx_c]
+        rgbs_each_pixel=rgb_compose_new.reshape(-1,3)[idx_c]
         
         
-        weights_= self.get_weights(pcd_real_sigma_clip,ray_indices)
+        weights_= self.get_weights(pcd_real_sigma_clip.reshape(H_d,W_d,-1),ray_indices)
 
         rgb_final=nerfacc.accumulate_along_rays(weights_,rgbs_each_pixel,ray_indices,H_d*W_d)
         weights_final=nerfacc.accumulate_along_rays(weights_,None,ray_indices,H_d*W_d)

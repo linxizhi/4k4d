@@ -39,7 +39,7 @@ def get_pytorch3d_camera_params(R,T,K,H,W):
 
     return H, W, K, R, T, C
 
-def get_ndc(pcd,K,R,T,H,W,rad):
+def get_ndc(pcd,K,R,T,H,W,rad=None):
     pcd=pcd.float()
     # H[0]=609
     # W[0]=251
@@ -49,5 +49,8 @@ def get_ndc(pcd,K,R,T,H,W,rad):
     T=T.float()
     rasterizer=PointsRasterizer()
     ndc_pcd = rasterizer.transform(Pointclouds(pcd), cameras=PerspectiveCameras(K=K, R=R, T=T, device=pcd.device)).points_padded()
-    ndc_rad = abs(K[..., 1, 1][..., None] * rad[..., 0] / (ndc_pcd[..., -1] + 1e-10))
-    return ndc_pcd,ndc_rad
+    if rad is not None:
+        ndc_rad = abs(K[..., 1, 1][..., None] * rad[..., 0] / (ndc_pcd[..., -1] + 1e-10))
+        return ndc_pcd,ndc_rad
+    else:
+        return ndc_pcd
