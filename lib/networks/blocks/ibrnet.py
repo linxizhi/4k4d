@@ -43,9 +43,9 @@ def get_rgb_feature(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:torch.Tens
     uv=project_xyz_to_uv(projection,xyz)/4
     print(torch.max(uv[...,0]))
     uv_rgb=uv_rgb.unsqueeze(0).repeat(uv.shape[0],uv.shape[1],1)
-    uv=uv.flip(-1)
+    uv_rgb=uv_rgb.flip(-1)
     uv-=uv_rgb
-    uv=get_normalized_uv(uv,H,W)
+    uv=get_normalized_uv(uv,156,83)
     rgb_feature=get_bilinear_feature(feature_map,rgb_map,uv)
     return rgb_feature
 
@@ -83,6 +83,6 @@ class IBRnet(nn.Module):
         rgb_shs=SH2RGB(rgb_showed_in_shs)
         rgb_shs=rgb_shs.clip(min=0)
         
-        rgb_compose=rgb_discrete+rgb_shs*0.0001
+        rgb_compose=rgb_discrete+rgb_shs
         rgb_compose=torch.clip(rgb_compose,0,1)
         return rgb_compose,rgb_discrete,rgb_shs

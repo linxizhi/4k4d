@@ -38,7 +38,7 @@ class MLP(nn.Module):
         return outputs  
     
 class SH_MLP(MLP):
-    def __init__(self, D=8, W=64, input_ch=32, degree=3, skips=[4], activation=nn.ReLU, out_activation=None):
+    def __init__(self, D=8, W=64, input_ch=32, degree=3, skips=[4], activation=nn.Softplus, out_activation=None):
         output_ch = (degree + 1) ** 2
         output_dim=output_ch*3
         self.output_ch=output_ch

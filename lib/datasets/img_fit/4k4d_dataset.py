@@ -78,7 +78,7 @@ class Camera:
                 mask=imageio.imread(os.path.join(mask_path,cam_angle,mask_file))
                 mask=np.array(mask).astype(np.float32)
                 mask_angle.append(mask)
-                if index==0:
+                if index>1:
                     break
             mask_angle=np.stack(mask_angle)
             
@@ -203,7 +203,7 @@ class Dataset(data.Dataset):
                 image=imageio.imread(os.path.join(image_path,angle,image_file))/255
                 # image=resize_array(image,(256,256,3))
                 now_angle_images.append(image)
-                if index==0:
+                if index>1:
                     break
             self.img.append(np.stack(now_angle_images))
         self.img=np.stack(self.img)
@@ -216,6 +216,7 @@ class Dataset(data.Dataset):
         
 
     def __getitem__(self, index):
+        # index=0
         max_len_x=self.camera.mask_max_len_x
         max_len_y=self.camera.mask_max_len_y
         cam_index=index%self.camera_len
@@ -232,17 +233,17 @@ class Dataset(data.Dataset):
         
         mask_min_x,mask_max_x,mask_min_y,mask_max_y=np.where(mask>0)[0].min(),np.where(mask>0)[0].max(),np.where(mask>0)[1].min(),np.where(mask>0)[1].max()
             # rgb_reference_images_list.append(rgb_reference_images[index,mask_min_x:mask_max_x,mask_min_y:mask_max_y,:])
-        rgb=rgb[mask_min_x:mask_max_x,mask_min_y:mask_max_y,:]
+        # rgb=rgb[mask_min_x:mask_max_x,mask_min_y:mask_max_y,:]
         uv_rgb=np.array([mask_min_x,mask_min_y])
-        rgb=pad_image(rgb,(max_len_x,max_len_y,3))
-        mask=mask[mask_min_x:mask_max_x,mask_min_y:mask_max_y]
-        mask=pad_image(mask,(max_len_x,max_len_y))
+        # rgb=pad_image(rgb,(max_len_x,max_len_y,3))
+        # mask=mask[mask_min_x:mask_max_x,mask_min_y:mask_max_y]
+        # mask=pad_image(mask,(max_len_x,max_len_y))
         ret = {'rgb': rgb} # input and output. they will be sent to cuda
         ret.update({'mask':mask})
         ret.update({'pcd': time_step_index,'cam':cam,"time_step":time_step_index,"cam_index":cam_index,"wbounds":wbounds})
         ret.update({'rays_o':cam.T })
         ret.update({"R":cam.R,"K":cam.K,"P":cam.P,"RT":cam.RT,"near":cam.n,"far":cam.f,"fov":cam.fov})
-        ret.update({'meta': {'H': max_len_x, 'W': max_len_y}}) # meta means no need to send to cuda
+        ret.update({'meta': {'H': self.img.shape[2], 'W': self.img.shape[3]}}) # meta means no need to send to cuda
         N_reference_images_index,projections= self.get_nearest_pose_cameras(cam_index)
         rgb_reference_images=self.img[N_reference_images_index,time_step_index]
         

@@ -19,7 +19,7 @@ import nerfacc
 import pytorch3d
 import numpy as np
 from lib.utils.data_utils import to_cuda
-
+from lib.utils.ndc_utils  import get_ndc
 # from easyvolcap.engine import SAMPLERS, EMBEDDERS, REGRESSORS
 # from easyvolcap.models.networks.embedders.kplanes_embedder import KPlanesEmbedder
 class Network(nn.Module):
@@ -40,10 +40,10 @@ class Network(nn.Module):
         self.all_masks=np.stack(self.all_masks)
         self.all_timestep_pcds={}
         self.cameras_all=[]
-        self.sigma_shift=-5.0
-        self.radius_shift=-5.0
-        self.radius_min=0.01
-        self.radius_max=0.015
+        self.sigma_shift=-3.0
+        self.radius_shift=-3.0
+        self.radius_min=0.001
+        self.radius_max=0.004
         
         # self.pcd_embedder= KPlanesEmbedder()
         
@@ -55,8 +55,8 @@ class Network(nn.Module):
         # to_cuda(self.allactivation_timestep_pcds)
         self.set_to_cuda()
         self.set_pcd_params()
-        for key ,param in self.named_parameters():
-            print(key)
+        # for key ,param in self.named_parameters():
+        #     print(key)
 
     def set_to_cuda(self):
         for key in self.all_timestep_pcds.keys():
@@ -73,8 +73,8 @@ class Network(nn.Module):
         radius_max=self.radius_max
         radius_shift=self.radius_shift
         sigma_shift=self.sigma_shift
-        r = (r + radius_shift).sigmoid() * (radius_max - radius_min) + radius_min
-        a = (a + sigma_shift).sigmoid()
+        r = F.sigmoid(10*r + radius_shift) * (radius_max - radius_min) + radius_min
+        a = F.sigmoid(10*a + sigma_shift)
         return r, a    
         
     
@@ -98,7 +98,7 @@ class Network(nn.Module):
                 # self.all_timestep_pcds.append(mask)       
         
     def get_normalized_direction(self,xyz,ray_o):
-        ray_o=ray_o.permute(0,2,1)
+        # ray_o=ray_o.permute(0,1,2)
         rays_d=xyz-ray_o.repeat(1,xyz.shape[1],1)
         rays_d=rays_d/torch.norm(rays_d,dim=-1,keepdim=True)
         return rays_d
@@ -155,11 +155,12 @@ class Network(nn.Module):
         radius=sigmas_radius[...,1]
         if self.use_sigmoid:
             radius,sigmas=self.geo_actvn(sigmas,radius)
-            # print(torch.min(radius),torch.max(radius))
+            # print("______________________-",torch.min(radius),torch.max(radius))
             # radius=F.sigmoid(radius)
             # radius=radius.clip(min=0)
         rays_o_cam=self.turn_pcd_world_to_cam(rays_o,RT)
-        direction_each=self.get_normalized_direction(xyz,rays_o)
+        rays_o_cam=rays_o_cam.permute(0,2,1)
+        direction_each=self.get_normalized_direction(xyz,(-R.mT@rays_o).mT)
         rgb_references=rgb_reference_images.squeeze(0).permute(0,3,1,2).float()
         rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature,uv_rgb)
         # self.project_pcd_to_ndc(xyz, K, RT, rays_o)
@@ -274,18 +275,25 @@ class Network(nn.Module):
     def render(self,rgb_compose,xyz,projection,H,W,sigmas,radius,K,RT,ray_o,R,fov):
         
         H_d,W_d=H.item(),W.item()
-        ndc_corrd,ndc_w=prepare_feedback_transform(H,W,K,R,ray_o,self.near,self.far,xyz)
+        
+        
+        ndc_corrd,ndc_radius=get_ndc(xyz,K,R,ray_o,H,W,radius)
+        
+        # ndc_corrd,ndc_w=prepare_feedback_transform(H,W,K,R,ray_o,self.near,self.far,xyz)
         # print(torch.max(ndc_corrd[...,0]),torch.min(ndc_corrd[...,0]))
         # print(torch.max(ndc_corrd[...,1]),torch.min(ndc_corrd[...,1]))
         # print(torch.max(ndc_corrd[...,2]),torch.min(ndc_corrd[...,2]))
         
         self.save_npy(ndc_corrd)
-        # ndc_radius = torch.abs(K[..., 1, 1][..., None] * radius[..., 0] / (ndc_w+ 1e-10)).reshape(-1)/1000
-        ndc_radius=self.get_ndc_radius(fov,ndc_w,radius)
+        # ndc_radius = torch.abs(K[..., 1, 1][..., None] * radius[..., 0] / (ndc_corrd[...,-1:]+ 1e-10)).reshape(-1)
+        ndc_radius=ndc_radius.float()
+        ndc_radius=ndc_radius.reshape(-1)
+        # ndc_radius=self.get_ndc_radius(fov,ndc_w,radius)
     
         ndc_corrd=ndc_corrd.unsqueeze(0).float()
         ndc_corrd=ndc_corrd.reshape(1,-1,3)
         ndc_radius_c=ndc_radius.float().clone()
+        
         pcd_real=Pointclouds(ndc_corrd)
 
         idx, depth, dists = rasterize_points(pcd_real, (H.item(), W.item()), ndc_radius_c, self.K_points, 0, None)
@@ -316,7 +324,7 @@ class Network(nn.Module):
         pcd_real_sigma=sigmas_each_pixel*(1-dists_c/(radius_each_pixel*radius_each_pixel))
         
         pcd_real_sigma_clip=pcd_real_sigma.clip(min=0)
-        print(torch.max(pcd_real_sigma),torch.min(pcd_real_sigma))
+        # print(torch.max(pcd_real_sigma),torch.min(pcd_real_sigma))
         rgbs_each_pixel=rgb_compose_new.reshape(-1,3)[idx_c]
         
         
