@@ -229,8 +229,8 @@ class Dataset(data.Dataset):
         wbounds=np.concatenate([wbounds,t_bounds],axis=1)
         # wbounds=wbounds.reshape(-1)
         rgb=self.img[cam_index,time_step_index]
-        mask=self.camera.all_masks[cam_index,time_step_index,:,:]
-        
+        mask=self.camera.all_masks[cam_index,time_step_index,:,:]/255
+        # print(np.max(mask))
         mask_min_x,mask_max_x,mask_min_y,mask_max_y=np.where(mask>0)[0].min(),np.where(mask>0)[0].max(),np.where(mask>0)[1].min(),np.where(mask>0)[1].max()
             # rgb_reference_images_list.append(rgb_reference_images[index,mask_min_x:mask_max_x,mask_min_y:mask_max_y,:])
         # rgb=rgb[mask_min_x:mask_max_x,mask_min_y:mask_max_y,:]
@@ -238,6 +238,7 @@ class Dataset(data.Dataset):
         # rgb=pad_image(rgb,(max_len_x,max_len_y,3))
         # mask=mask[mask_min_x:mask_max_x,mask_min_y:mask_max_y]
         # mask=pad_image(mask,(max_len_x,max_len_y))
+        rgb=rgb*mask[...,np.newaxis]
         ret = {'rgb': rgb} # input and output. they will be sent to cuda
         ret.update({'mask':mask})
         ret.update({'pcd': time_step_index,'cam':cam,"time_step":time_step_index,"cam_index":cam_index,"wbounds":wbounds})

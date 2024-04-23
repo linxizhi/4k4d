@@ -47,6 +47,7 @@ def train(cfg, network):
 
         train_loader.dataset.epoch = epoch
 
+
         trainer.train(epoch, train_loader, optimizer, recorder)
         scheduler.step()
 

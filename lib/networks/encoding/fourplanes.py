@@ -33,7 +33,7 @@ class FourPlane(nn.Module):
         inputs = inputs - wbounds[None][:, :4]
         inputs = inputs / ((wbounds[4:8] - wbounds[:4]).max().item() + eps)
         
-        print(torch.max(inputs),torch.min(inputs))
+        # print(torch.max(inputs),torch.min(inputs))
         xy_feat = self.xy_plane(inputs[..., [0, 1]])
         yz_feat = self.yz_plane(inputs[..., [1, 2]])
         xz_feat = self.xz_plane(inputs[..., [0, 2]])
