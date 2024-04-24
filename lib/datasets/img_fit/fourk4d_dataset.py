@@ -17,6 +17,7 @@ from lib.datasets.img_fit.caminfo import CameraInfo4K4D
 
 from scipy.ndimage import zoom
 from lib.utils.camera_utils import resize_array
+import math
 def pad_image(image, target_size):
 
     pad_dims = [(0, max_size - img_size) for img_size, max_size in zip(image.shape, target_size)]
@@ -136,7 +137,11 @@ class Camera:
 
             # CCM
             cam_dict['ccm'] = self.read('ccm_{}'.format(cam),True)
-            cam_dict['ccm'] = np.eye(3) if cam_dict['ccm'] is None else cam_dict['ccm']          
+            cam_dict['ccm'] = np.eye(3) if cam_dict['ccm'] is None else cam_dict['ccm']     
+            mm=-cam_dict['R'].T@cam_dict['T']
+            c2w=   np.concatenate([cam_dict['R'].T,mm],axis=-1)
+            cam_dict['c2w']=  c2w
+            cam_dict['center']=cam_dict['c2w'][:,-1].reshape(3,1)
             caminfo=CameraInfo4K4D(**cam_dict)
             self.cameras_all.append(caminfo)
         
@@ -266,20 +271,32 @@ class Dataset(data.Dataset):
         smallest_uv=[]
         max_len_x,max_len_y=0,0
         cam_k_all=[]
+        mask_allindex_lists=[]
         for index,mask in enumerate(masks):
             mask_real_index=N_reference_images_index[index]
-            cam_k_temp=self.camera.cameras_all[mask_real_index].K.copy()
-            mask_min_x,mask_max_x,mask_min_y,mask_max_y=np.where(mask>0)[1].min(),np.where(mask>0)[1].max(),np.where(mask>0)[2].min(),np.where(mask>0)[2].max()
+            cam_k_temp=self.camera.get_camera(mask_real_index).K.copy()
+            mask_min_x,mask_max_x,mask_min_y,mask_max_y=np.where(mask>0.9)[1].min(),np.where(mask>0.9)[1].max(),np.where(mask>0.5)[2].min(),np.where(mask>0.5)[2].max()
             rgb_reference_images_list.append(rgb_reference_images[index,mask_min_x:mask_max_x,mask_min_y:mask_max_y,:])
             uv_temp=np.array([mask_min_x,mask_min_y])
             smallest_uv.append(uv_temp)
             cam_k_temp[0,2]-=mask_min_y
             cam_k_temp[1,2]-=mask_min_x
+            
+            mask_allindex_lists.append([mask_min_x,mask_max_x,mask_min_y,mask_max_y])
+
             cam_k_all.append(cam_k_temp)
             if (mask_max_x-mask_min_x>max_len_x):
                 max_len_x=mask_max_x-mask_min_x
             if (mask_max_y-mask_min_y>max_len_y):
                 max_len_y=mask_max_y-mask_min_y
+        max_len_x=math.ceil(max_len_x/8)*8
+        max_len_y=math.ceil(max_len_y/8)*8
+        for i,mask_for in enumerate(mask_allindex_lists):
+            mask_min_x,mask_max_x,mask_min_y,mask_max_y=mask_for
+            len_pad_x=max(max_len_x-(mask_max_x-mask_min_x),0)
+            len_pad_y=max(max_len_y-(mask_max_y-mask_min_y),0)
+            # cam_k_all[i][0,2]-=2
+            # cam_k_all[i][1,2]-=2
         K_for_reference=np.stack(cam_k_all)
         #TODO 这里可能是错误的
         # K_for_reference=cam.K.copy()
@@ -297,6 +314,7 @@ class Dataset(data.Dataset):
         ret.update({"rgb_reference_images":rgb_reference_images_list_final})
         ret.update({"projections":projections})
         ret.update({"uv_rgb":uv_rgb})
+        ret.update({"refernce_k":K_for_reference,"refernce_RTs":RTS})
         # ret.update({"smallest_uv":smallest_uv})
         
         return ret
@@ -304,8 +322,8 @@ class Dataset(data.Dataset):
         num_cams=self.camera_len
         target_cam=self.camera.get_camera(now_index)
         all_cams=self.camera.cameras_all
-        target_cam_center=target_cam.T
-        all_cam_centers=[cam.T for cam in all_cams]
+        target_cam_center=target_cam.center
+        all_cam_centers=[cam.center for cam in all_cams]
         all_RTs=[cam.RT for cam in all_cams]
         all_Ks=[cam.K for cam in all_cams]
 
@@ -318,7 +336,7 @@ class Dataset(data.Dataset):
         all_cam_distance=all_cam_centers-target_cam_center
         all_cam_distance=np.linalg.norm(all_cam_distance,axis=-1)
         distance_index=np.argsort(all_cam_distance,axis=-1)
-        distance_index=distance_index[:self.nearset_num]
+        distance_index=distance_index[1:self.nearset_num+1]
         RTs_choose=all_RTs[distance_index]
         KS_choose=all_Ks[distance_index]
 

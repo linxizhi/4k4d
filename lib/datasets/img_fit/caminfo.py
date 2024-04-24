@@ -19,3 +19,5 @@ class CameraInfo4K4D(NamedTuple):
     bounds: np.array
     ccm: np.array
     fov: np.array
+    c2w:np.array
+    center:np.array

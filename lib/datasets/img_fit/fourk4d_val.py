@@ -134,7 +134,10 @@ class Camera:
 
             # CCM
             cam_dict['ccm'] = self.read('ccm_{}'.format(cam),True)
-            cam_dict['ccm'] = np.eye(3) if cam_dict['ccm'] is None else cam_dict['ccm']          
+            cam_dict['ccm'] = np.eye(3) if cam_dict['ccm'] is None else cam_dict['ccm']   
+            #TODO 
+            cam_dict['c2w']=cam_dict['RT']
+            cam_dict['center']=cam_dict['K'] @ cam_dict['RT'] @ np.array([0,0,0,1])      
             caminfo=CameraInfo4K4D(**cam_dict)
             self.cameras_all.append(caminfo)
         
