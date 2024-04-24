@@ -45,7 +45,7 @@ class Network(nn.Module):
         self.sigma_shift=-3.0
         self.radius_shift=-3.0
         self.radius_min=0.001
-        self.radius_max=0.015
+        self.radius_max=0.006
         
         # self.pcd_embedder= KPlanesEmbedder()
         
@@ -92,7 +92,7 @@ class Network(nn.Module):
                 mask=imageio.imread(os.path.join(mask_path,cam_angle,mask_file))
                 mask=np.array(mask).astype(np.float32)
                 mask_angle.append(mask)
-                if index>1:
+                if index>8:
                     break
             mask_angle=np.stack(mask_angle)
             
@@ -165,7 +165,7 @@ class Network(nn.Module):
         rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature,refernce_K,refernce_RTs)
         # self.project_pcd_to_ndc(xyz, K, RT, rays_o)
         # prepare_feedback_transform(H, W, K,R,rays_o,self.near,self.far,xyz)
-        self.save_image(batch['rgb'],0)
+        self.save_image(batch['rgb'],5)
         for i in range(4):
             self.save_image(batch["rgb_reference_images"][0,i,...],i)
         rgb_out,weight_out=self.render(rgb_compose,xyz,P.unsqueeze(0),H,W,sigmas,radius,K,RT,rays_o,R,fov)

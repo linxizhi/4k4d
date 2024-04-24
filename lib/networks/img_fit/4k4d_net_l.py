@@ -134,6 +134,8 @@ class Network(nn.Module):
         K,R,P,RT=batch['K'],batch['R'],batch['P'],batch['RT']
 
         refernce_K=batch['refernce_k']
+        # refernce_K=torch.load("src_exts.pt").to(device=xyz.device,dtype=xyz.dtype)
+        # refernce_K=
         refernce_RTs=batch['refernce_RTs']
 
         wbounds_space_max=torch.max(xyz,dim=1,keepdim=True)[0]

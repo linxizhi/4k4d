@@ -79,7 +79,7 @@ class Camera:
                 mask=imageio.imread(os.path.join(mask_path,cam_angle,mask_file))
                 mask=np.array(mask).astype(np.float32)
                 mask_angle.append(mask)
-                if index>1:
+                if index>8:
                     break
             mask_angle=np.stack(mask_angle)
             
@@ -210,7 +210,7 @@ class Dataset(data.Dataset):
                 image=imageio.imread(os.path.join(image_path,angle,image_file))/255
                 # image=resize_array(image,(256,256,3))
                 now_angle_images.append(image)
-                if index>1:
+                if index>8:
                     break
             self.img.append(np.stack(now_angle_images))
         self.img=np.stack(self.img)
@@ -224,7 +224,7 @@ class Dataset(data.Dataset):
         
 
     def __getitem__(self, index):
-        # index=0
+        index=21
 
         cam_index=index%self.camera_len
         time_step_index=index//self.camera_len
@@ -249,6 +249,7 @@ class Dataset(data.Dataset):
         W=rgb.shape[1]
         
         cam_k=cam.K.copy()
+        # print(cam_k)
         # cam_k[0,...]=cam_k[0,...]*(mask_max_y-mask_min_y)/self.W
         # cam_k[1,...]=cam_k[1,...]*(mask_max_x-mask_min_x)/self.H
         cam_k[0,2]=cam_k[0,2]-mask_min_y
@@ -289,14 +290,14 @@ class Dataset(data.Dataset):
                 max_len_x=mask_max_x-mask_min_x
             if (mask_max_y-mask_min_y>max_len_y):
                 max_len_y=mask_max_y-mask_min_y
-        max_len_x=math.ceil(max_len_x/8)*8
-        max_len_y=math.ceil(max_len_y/8)*8
+        # max_len_x=math.ceil(max_len_x/8)*8
+        # max_len_y=math.ceil(max_len_y/8)*8
         for i,mask_for in enumerate(mask_allindex_lists):
             mask_min_x,mask_max_x,mask_min_y,mask_max_y=mask_for
             len_pad_x=max(max_len_x-(mask_max_x-mask_min_x),0)
             len_pad_y=max(max_len_y-(mask_max_y-mask_min_y),0)
-            # cam_k_all[i][0,2]-=2
-            # cam_k_all[i][1,2]-=2
+            # cam_k_all[i][0,2]-=100
+            # cam_k_all[i][1,2]-=100
         K_for_reference=np.stack(cam_k_all)
         #TODO 这里可能是错误的
         # K_for_reference=cam.K.copy()
@@ -337,8 +338,8 @@ class Dataset(data.Dataset):
         all_cam_distance=np.linalg.norm(all_cam_distance,axis=-1)
         distance_index=np.argsort(all_cam_distance,axis=-1)
         distance_index=distance_index[1:self.nearset_num+1]
-        RTs_choose=all_RTs[distance_index]
-        KS_choose=all_Ks[distance_index]
+        RTs_choose=all_RTs[distance_index].copy()
+        KS_choose=all_Ks[distance_index].copy()
 
         return distance_index,RTs_choose,KS_choose
         

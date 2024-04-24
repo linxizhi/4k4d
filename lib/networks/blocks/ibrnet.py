@@ -20,9 +20,7 @@ def project_xyz_to_uv(projection:torch.Tensor,xyz:torch.Tensor):
 
     return uv
 def get_normalized_uv(uv,H,W):
-    # uv=uv[:,:2]
-    uv=torch.clamp(uv,min=0)
-    uv=torch.clamp(uv,max=torch.tensor([W-1,H-1],device=uv.device,dtype=uv.dtype))
+
     uv=2*uv/torch.tensor([W-1,H-1],device=uv.device,dtype=uv.dtype)-1
     return uv
 def set_to_ndc_corrd(uv,H,W):
@@ -44,6 +42,7 @@ def get_bilinear_feature(feature_map,rgb_map,uv):
 def get_rgb_feature(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:torch.TensorType,K:torch.Tensor,R:torch.Tensor,T:torch.Tensor,H:torch.Tensor,W:torch.Tensor):
 
     ndc_uv=get_ndc_for_uv(xyz,K,R,T,H,W)
+    print(K,R,T)
     print(torch.max(ndc_uv[...,0]),torch.max(ndc_uv[...,1]),torch.min(ndc_uv[...,0]),torch.min(ndc_uv[...,0]))
     # uv=project_xyz_to_uv(projection,xyz)
     # if (torch.max(uv[...,0]<torch.max(uv[...,1]))):
@@ -63,7 +62,9 @@ def get_rgb_feature_by_ndc(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:tor
     # if (torch.max(uv[...,0]<torch.max(uv[...,1]))):
     #     uv=uv.flip(-1)
     # uv=uv.flip(-1)
-    print(torch.max(uv[...,0]),torch.max(uv[...,1]),torch.min(uv[...,0]),torch.min(uv[...,0]))
+    # print(projection)
+    
+    # print(torch.max(uv[...,0]),torch.max(uv[...,1]),torch.min(uv[...,0]),torch.min(uv[...,0]))
     uv=get_normalized_uv(uv,H,W)
     
     rgb_feature=get_bilinear_feature(feature_map,rgb_map,uv)
@@ -87,9 +88,9 @@ class IBRnet(nn.Module):
         else:
             feature_map_corse,feature_map_fine=self.feature_map_encoder(rgbs)
         rgb_feature=get_rgb_feature_by_ndc(feature_map_corse,rgb_map,xyz,projection,H,W)
-        RTs=RTs.squeeze(0)
+        RTs=RTs
         Rs,Ts=RTs[...,:-1],RTs[...,-1:]
-        Ks=Ks.squeeze(0)
+        Ks=Ks
         # rgb_feature=get_rgb_feature(feature_map_corse,rgb_map,xyz,Ks,Rs,Ts,H,W)
         
         # scales=torch.tensor([[1.0,1.0]],device=Ks.device,dtype=Ks.dtype).reshape(2,-1)
@@ -98,7 +99,7 @@ class IBRnet(nn.Module):
         # exts=torch.cat([exts,zeros],dim=-2)
         # ixts=Ks
         
-        #rgb_feature=sample_geometry_feature_image(xyz,feature_map_corse.unsqueeze(0),rgb_map.unsqueeze(0),exts,ixts,scales)
+        # rgb_feature=sample_geometry_feature_image(xyz,feature_map_corse.unsqueeze(0),rgb_map.unsqueeze(0),exts,ixts,scales)
         rgb_raw=rgb_feature[...,:3].permute(1,0,2)
 
         xyz_feature_repeat=xyz_feature.unsqueeze(0).repeat(rgb_feature.shape[0],1,1)
