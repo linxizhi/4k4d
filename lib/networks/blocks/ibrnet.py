@@ -56,15 +56,14 @@ def get_rgb_feature(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:torch.Tens
 
 
 
-def get_rgb_feature_by_ndc(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:torch.TensorType,projection:torch.Tensor,H:torch.Tensor,W:torch.Tensor):
+def get_rgb_feature_by_ndc(feature_map:torch.Tensor,rgb_map:torch.Tensor,xyz:torch.TensorType,projection:torch.Tensor,H:torch.Tensor,W:torch.Tensor,scale:torch.Tensor):
     
     uv=project_xyz_to_uv(projection,xyz)
-    # if (torch.max(uv[...,0]<torch.max(uv[...,1]))):
-    #     uv=uv.flip(-1)
-    # uv=uv.flip(-1)
-    # print(projection)
-    
-    # print(torch.max(uv[...,0]),torch.max(uv[...,1]),torch.min(uv[...,0]),torch.min(uv[...,0]))
+    # uv[...,0]/=2
+    # uv[...,0]-=80
+
+    scale=scale.permute(1,0,2).flip(-1)
+    uv=uv/scale
     uv=get_normalized_uv(uv,H,W)
     
     rgb_feature=get_bilinear_feature(feature_map,rgb_map,uv)
@@ -81,16 +80,19 @@ class IBRnet(nn.Module):
         sh_config=ibr_cfg['SH_consistent_encoder']
         self.sh_degree=sh_config["degree"]
         self.SH_consistent_Encoder=SH_MLP(**sh_config)
-    def forward(self,rgbs,xyz,projection,H,W,direction,xyz_feature,Ks,RTs):
+    def forward(self,rgbs,xyz,projection,H,W,direction,xyz_feature,Ks,RTs,scale):
         rgb_map=rgbs
         if self.cfg['Feature_map_encoder']['coarse_only']:
             feature_map_corse,_=self.feature_map_encoder(rgbs)
         else:
             feature_map_corse,feature_map_fine=self.feature_map_encoder(rgbs)
-        rgb_feature=get_rgb_feature_by_ndc(feature_map_corse,rgb_map,xyz,projection,H,W)
+        rgb_feature=get_rgb_feature_by_ndc(feature_map_corse,rgb_map,xyz,projection,H,W,scale)
+        
+        
         RTs=RTs
         Rs,Ts=RTs[...,:-1],RTs[...,-1:]
         Ks=Ks
+        
         # rgb_feature=get_rgb_feature(feature_map_corse,rgb_map,xyz,Ks,Rs,Ts,H,W)
         
         # scales=torch.tensor([[1.0,1.0]],device=Ks.device,dtype=Ks.dtype).reshape(2,-1)
@@ -100,6 +102,7 @@ class IBRnet(nn.Module):
         # ixts=Ks
         
         # rgb_feature=sample_geometry_feature_image(xyz,feature_map_corse.unsqueeze(0),rgb_map.unsqueeze(0),exts,ixts,scales)
+        
         rgb_raw=rgb_feature[...,:3].permute(1,0,2)
 
         xyz_feature_repeat=xyz_feature.unsqueeze(0).repeat(rgb_feature.shape[0],1,1)
@@ -110,13 +113,15 @@ class IBRnet(nn.Module):
         weights_for_each=self.softmax(weights_for_each).unsqueeze(-1)
         rgb_discrete=torch.sum(rgb_raw*weights_for_each,dim=1)
         
+        # rgb_discrete=rgb_raw[:,0,...]
+        
         shs=self.SH_consistent_Encoder(xyz_feature)
         rgb_showed_in_shs=eval_sh(self.sh_degree,shs,direction.reshape(-1,3))
         rgb_shs=rgb_showed_in_shs.tanh()*0.25
         # rgb_shs=SH2RGB(rgb_showed_in_shs)
         rgb_shs=rgb_shs.clip(min=0)
         
-        rgb_compose=rgb_discrete+rgb_shs*0.25
+        rgb_compose=rgb_discrete+rgb_shs
         rgb_compose=torch.clip(rgb_compose,0,1)
         return rgb_compose,rgb_discrete,rgb_shs
 def sample_geometry_feature_image(xyz: torch.Tensor,  # B, P, 3

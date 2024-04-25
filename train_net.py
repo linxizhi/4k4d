@@ -50,6 +50,7 @@ def train(cfg, network):
 
         trainer.train(epoch, train_loader, optimizer, recorder)
         scheduler.step()
+        trainer.val(epoch, val_loader, evaluator, recorder)
 
         if (epoch + 1) % cfg.save_ep == 0 and cfg.local_rank == 0:
             save_model(network, optimizer, scheduler, recorder,

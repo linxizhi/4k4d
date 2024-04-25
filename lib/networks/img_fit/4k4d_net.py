@@ -134,6 +134,7 @@ class Network(nn.Module):
         K,R,P,RT=batch['K'],batch['R'],batch['P'],batch['RT']
 
         refernce_K=batch['refernce_k']
+        # refernce_K=torch.load("src_exts.pt").to(device=xyz.device,dtype=xyz.dtype)
         refernce_RTs=batch['refernce_RTs']
 
         wbounds_space_max=torch.max(xyz,dim=1,keepdim=True)[0]
@@ -142,7 +143,7 @@ class Network(nn.Module):
         wbounds[...,:-1]=wbounds_space
         # wbounds[...,:-1]=wbounds_space
         
-        
+        scale=batch['scale']
         fov=batch['fov']
         projections=batch['projections']
         rgb_reference_images=batch['rgb_reference_images']
@@ -162,7 +163,7 @@ class Network(nn.Module):
         rays_o_cam=rays_o_cam.permute(0,2,1)
         direction_each=self.get_normalized_direction(xyz,(-R.mT@rays_o).mT)
         rgb_references=rgb_reference_images.squeeze(0).permute(0,3,1,2).float()
-        rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature,refernce_K,refernce_RTs)
+        rgb_compose,rgb_discrete,rgb_shs= self.ibrnet(rgb_references,xyz,projections,H,W,direction_each,xyz_feature,refernce_K,refernce_RTs,scale)
         # self.project_pcd_to_ndc(xyz, K, RT, rays_o)
         # prepare_feedback_transform(H, W, K,R,rays_o,self.near,self.far,xyz)
         self.save_image(batch['rgb'],5)
